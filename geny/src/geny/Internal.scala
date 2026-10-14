@@ -5,11 +5,30 @@ import java.lang.Character.MAX_SURROGATE
 import java.lang.Character.MIN_SURROGATE
 
 object Internal {
-  /** TODO FILL IN */
+  /** Default for the `maxBufferSize` argument of [[Internal.transfer0]] and
+   *  [[Internal.transfer]]: 65536 bytes, the hard ceiling on the transfer
+   *  buffer. It clamps the initial size derived from `src.available`, so a
+   *  stream reporting more than 64 KiB available still starts from a 64 KiB
+   *  buffer, and it also stops the buffer from doubling past that size, which
+   *  bounds the allocation however much is transferred.
+   */
   val defaultMaxBufferStartSize: Int = 64 * 1024
-  /** TODO FILL IN */
+  /** Default for the `minBufferSize` argument of [[Internal.transfer0]] and
+   *  [[Internal.transfer]]: 64 bytes, the floor the transfer buffer is clamped
+   *  to. It only ever binds on the initial, `available`-derived size, since
+   *  growth always doubles a buffer that already respects it. It is what keeps
+   *  a stream reporting `available` as 0 out of getting a zero-length buffer,
+   *  whose `read` would return 0 forever; passing 0 or less makes the transfer
+   *  loop never terminate.
+   */
   val defaultMinBufferStartSize: Int = 64
-  /** TODO FILL IN */
+  /** Default for the `bufferGrowthRatio` argument of [[Internal.transfer0]] and
+   *  [[Internal.transfer]]: 4, meaning the buffer is only doubled once the
+   *  total number of bytes transferred so far exceeds four times its current
+   *  length. A short payload therefore never pays for a reallocation, and each
+   *  doubling is amortized over more than four bufferfuls of copying. A ratio
+   *  of 1 or less doubles the buffer after every non-empty read instead.
+   */
   val defaultBufferGrowthRatio: Int = 4
 
   /**
@@ -52,7 +71,18 @@ object Internal {
     src.close()
   }
 
-  /** TODO FILL IN */
+  /** Copies the whole of `src` into `dest` over the dynamically sized buffer of
+   *  [[Internal.transfer0]], writing each chunk as it is read. `src` is closed
+   *  once it has been drained, but only on that path: an exception thrown by
+   *  either `read` or `write` propagates out and leaves `src` unclosed. `dest`
+   *  is never flushed or closed, which remains the caller's responsibility. The
+   *  three sizing arguments are handed to [[Internal.transfer0]] unchanged, so
+   *  their defaults and the growth rules described there apply here as well.
+   *
+   *  A `null` `src` throws `NullPointerException` straight away, when its
+   *  `available` is queried, whereas a `null` `dest` only does so once the
+   *  first chunk arrives: an empty `src` writes nothing and never notices it.
+   */
   def transfer(src: InputStream,
                dest: OutputStream,
                minBufferSize: Int = defaultMinBufferStartSize,
@@ -66,9 +96,21 @@ object Internal {
   )
 
   // VENDORED FROM GUAVA
-  /** TODO FILL IN
+  /** Returns the number of bytes `sequence` occupies once encoded as UTF-8,
+   *  counting one byte per char below `0x80`, two per char below `0x800` and
+   *  three above that, except a well-formed surrogate pair, which counts four
+   *  bytes for the pair. For a well-formed string this is the length
+   *  `String.getBytes(StandardCharsets.UTF_8)` produces, which is what
+   *  [[Writable.contentLength]] reports through it.
    *
-   *  @param sequence TODO FILL IN
+   *  @param sequence the string to measure, expected to be well-formed. A
+   *    `null` string throws `NullPointerException`, and an unpaired surrogate
+   *    throws `IllegalArgumentException` naming its index, because such a
+   *    string has no single well-defined encoding length.
+   *  @return the length of `sequence` in UTF-8 bytes, at most three per char. A
+   *    length too large for an `Int` — more than about 715 million chars — is
+   *    reported by throwing `IllegalArgumentException` rather than returned as
+   *    a number that has wrapped around into a negative value.
    */
   def encodedLength(sequence: String) = { // Warning to maintainers: this implementation is highly optimized.
     val utf16Length = sequence.length
