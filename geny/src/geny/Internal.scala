@@ -5,8 +5,11 @@ import java.lang.Character.MAX_SURROGATE
 import java.lang.Character.MIN_SURROGATE
 
 object Internal {
+  /** TODO FILL IN */
   val defaultMaxBufferStartSize: Int = 64 * 1024
+  /** TODO FILL IN */
   val defaultMinBufferStartSize: Int = 64
+  /** TODO FILL IN */
   val defaultBufferGrowthRatio: Int = 4
 
   /**
@@ -49,6 +52,7 @@ object Internal {
     src.close()
   }
 
+  /** TODO FILL IN */
   def transfer(src: InputStream,
                dest: OutputStream,
                minBufferSize: Int = defaultMinBufferStartSize,
@@ -62,6 +66,10 @@ object Internal {
   )
 
   // VENDORED FROM GUAVA
+  /** TODO FILL IN
+   *
+   *  @param sequence TODO FILL IN
+   */
   def encodedLength(sequence: String) = { // Warning to maintainers: this implementation is highly optimized.
     val utf16Length = sequence.length
     var utf8Length = utf16Length
