@@ -23,60 +23,60 @@ import sun.nio.cs.StreamEncoder
  * methods or additional implicit constructors that make sense in their context.
  */
 trait Writable extends Any{
-  /** TODO FILL IN
+  /** Writes the bytes of this value to the given OutputStream.
    *
-   *  @param out TODO FILL IN
+   *  @param out the output stream to write the bytes to
    */
   def writeBytesTo(out: OutputStream): Unit
-  /** TODO FILL IN */
+  /** The MIME content type of the bytes, if known, for use as an HTTP Content-Type header. */
   def httpContentType: Option[String] = None
-  /** TODO FILL IN */
+  /** The number of bytes this writes, if known in advance. */
   def contentLength: Option[Long] = None
 }
 object Writable extends LowPriWritable {
-  /** TODO FILL IN
+  /** Implicit conversion from a `String` to a [[Writable]] that writes its UTF-8 bytes.
    *
-   *  @param s TODO FILL IN
+   *  @param s the string to write
    */
   implicit class StringWritable(s: String) extends Writable{
-    /** TODO FILL IN
+    /** Writes the string to `out` as UTF-8 encoded bytes, in chunks of 8192 characters.
      *
-     *  @param out TODO FILL IN
+     *  @param out the output stream to write the bytes to
      */
     def writeBytesTo(out: OutputStream): Unit = {
 
       s.grouped(8192).foreach(ss => out.write(ss.getBytes(StandardCharsets.UTF_8)))
     }
-    /** TODO FILL IN */
+    /** The content type is `text/plain; charset=utf-8`. */
     override def httpContentType = Some("text/plain; charset=utf-8")
-    /** TODO FILL IN */
+    /** The length of the string encoded as UTF-8, in bytes. */
     override def contentLength = Some(Internal.encodedLength(s))
   }
 
-  /** TODO FILL IN
+  /** Implicit conversion from a byte array to a [[Writable]] that writes its contents.
    *
-   *  @param a TODO FILL IN
+   *  @param a the bytes to write
    */
   implicit class ByteArrayWritable(a: Array[Byte]) extends Writable{
-    /** TODO FILL IN
+    /** Writes the whole byte array to `out`.
      *
-     *  @param out TODO FILL IN
+     *  @param out the output stream to write the bytes to
      */
     def writeBytesTo(out: OutputStream): Unit = out.write(a)
-    /** TODO FILL IN */
+    /** The content type is `application/octet-stream`. */
     override def httpContentType = Some("application/octet-stream")
-    /** TODO FILL IN */
+    /** The length of the byte array. */
     override def contentLength = Some(a.length)
   }
 
-  /** TODO FILL IN
+  /** Implicit conversion from a `ByteBuffer` to a [[Writable]] that writes its remaining bytes.
    *
-   *  @param buffer TODO FILL IN
+   *  @param buffer the buffer whose remaining bytes are written
    */
   implicit class ByteBufferWritable(buffer: java.nio.ByteBuffer) extends Writable {
-    /** TODO FILL IN
+    /** Writes the remaining bytes of the buffer to `out`, in chunks of 8192 bytes.
      *
-     *  @param out TODO FILL IN
+     *  @param out the output stream to write the bytes to
      */
     def writeBytesTo(out: OutputStream): Unit = {
       // TODO: there is room for optimization here. We could match on the output
@@ -101,22 +101,22 @@ object Writable extends LowPriWritable {
         count += l
       }
     }
-    /** TODO FILL IN */
+    /** The content type is `application/octet-stream`. */
     override def httpContentType = Some("application/octet-stream")
-    /** TODO FILL IN */
+    /** The number of remaining bytes in the buffer. */
     override def contentLength = Some(buffer.remaining())
   }
 
 }
 
-/** TODO FILL IN */
+/** Low-priority implicit conversions to [[Writable]], used when no conversion in the [[Writable]] companion applies. */
 trait LowPriWritable{
-  /** TODO FILL IN
+  /** Converts any value that has an implicit [[Readable]] conversion into a [[Writable]].
    *
-   *  @tparam T TODO FILL IN
-   *  @param t TODO FILL IN
-   *  @param f TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam T the type of value to convert
+   *  @param t the value to convert
+   *  @param f the implicit conversion from `T` to [[Readable]]
+   *  @return a [[Writable]] that writes the bytes of the [[Readable]] obtained from `t`
    */
   implicit def readableWritable[T](t: T)(implicit f: T => Readable): Writable = f(t)
 }
@@ -133,68 +133,69 @@ trait LowPriWritable{
  * callback returns.
  */
 trait Readable extends Writable{
-  /** TODO FILL IN
+  /** Calls `f` with an InputStream over the bytes of this value and returns its result.
+   *  The stream is only valid during the call.
    *
-   *  @tparam T TODO FILL IN
-   *  @param f TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam T the result type of `f`
+   *  @param f the function that consumes the InputStream
+   *  @return the result of `f`
    */
   def readBytesThrough[T](f: InputStream => T): T
-  /** TODO FILL IN
+  /** Writes the bytes of this value to `out` by reading them through [[readBytesThrough]].
    *
-   *  @param out TODO FILL IN
+   *  @param out the output stream to write the bytes to
    */
   def writeBytesTo(out: OutputStream): Unit = readBytesThrough(Internal.transfer(_, out))
 }
 object Readable{
-  /** TODO FILL IN
+  /** Implicit conversion from a `String` to a [[Readable]] over its UTF-8 bytes.
    *
-   *  @param s TODO FILL IN
+   *  @param s the string to read
    */
   implicit class StringReadable(s: String) extends Readable{
-    /** TODO FILL IN
+    /** Calls `f` with an InputStream over the UTF-8 bytes of the string and returns its result.
      *
-     *  @tparam T TODO FILL IN
-     *  @param f TODO FILL IN
-     *  @return TODO FILL IN
+     *  @tparam T the result type of `f`
+     *  @param f the function that consumes the InputStream
+     *  @return the result of `f`
      */
     def readBytesThrough[T](f: InputStream => T): T = {
       f(new ByteArrayInputStream(s.getBytes(StandardCharsets.UTF_8)))
     }
-    /** TODO FILL IN */
+    /** The content type is `text/plain; charset=utf-8`. */
     override def httpContentType = Some("text/plain; charset=utf-8")
-    /** TODO FILL IN */
+    /** The length of the string encoded as UTF-8, in bytes. */
     override def contentLength = Some(Internal.encodedLength(s))
   }
 
-  /** TODO FILL IN
+  /** Implicit conversion from a byte array to a [[Readable]] over its contents.
    *
-   *  @param a TODO FILL IN
+   *  @param a the bytes to read
    */
   implicit class ByteArrayReadable(a: Array[Byte]) extends Readable{
-    /** TODO FILL IN
+    /** Calls `f` with an InputStream over the byte array and returns its result.
      *
-     *  @tparam T TODO FILL IN
-     *  @param f TODO FILL IN
-     *  @return TODO FILL IN
+     *  @tparam T the result type of `f`
+     *  @param f the function that consumes the InputStream
+     *  @return the result of `f`
      */
     def readBytesThrough[T](f: InputStream => T): T = f(new ByteArrayInputStream(a))
-    /** TODO FILL IN */
+    /** The content type is `application/octet-stream`. */
     override def httpContentType = Some("application/octet-stream")
-    /** TODO FILL IN */
+    /** The length of the byte array. */
     override def contentLength = Some(a.length)
   }
 
-  /** TODO FILL IN
+  /** Implicit conversion from a `ByteBuffer` to a [[Readable]] over its remaining bytes.
    *
-   *  @param buffer TODO FILL IN
+   *  @param buffer the buffer whose remaining bytes are read
    */
   implicit class ByteBufferReadable(buffer: java.nio.ByteBuffer) extends Readable{
-    /** TODO FILL IN
+    /** Calls `f` with an InputStream over the remaining bytes of the buffer and returns its result.
      *
-     *  @tparam T TODO FILL IN
-     *  @param f TODO FILL IN
-     *  @return TODO FILL IN
+     *  @tparam T the result type of `f`
+     *  @param f the function that consumes the InputStream
+     *  @return the result of `f`
      */
     def readBytesThrough[T](f: InputStream => T): T = {
       val bb = buffer.duplicate().order(buffer.order())
@@ -216,25 +217,25 @@ object Readable{
 
       f(is)
     }
-    /** TODO FILL IN */
+    /** The content type is `application/octet-stream`. */
     override def httpContentType = Some("application/octet-stream")
-    /** TODO FILL IN */
+    /** The number of remaining bytes in the buffer. */
     override def contentLength = Some(buffer.remaining())
   }
 
-  /** TODO FILL IN
+  /** Implicit conversion from an `InputStream` to a [[Readable]] that wraps it.
    *
-   *  @param i TODO FILL IN
+   *  @param i the input stream to read from
    */
   implicit class InputStreamReadable(i: InputStream) extends Readable{
-    /** TODO FILL IN
+    /** Passes the wrapped InputStream to `f` and returns its result.
      *
-     *  @tparam T TODO FILL IN
-     *  @param f TODO FILL IN
-     *  @return TODO FILL IN
+     *  @tparam T the result type of `f`
+     *  @param f the function that consumes the InputStream
+     *  @return the result of `f`
      */
     def readBytesThrough[T](f: InputStream => T): T = f(i)
-    /** TODO FILL IN */
+    /** The content type is `application/octet-stream`. */
     override def httpContentType: Option[String] = Some("application/octet-stream")
   }
 }

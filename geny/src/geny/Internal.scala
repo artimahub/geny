@@ -5,11 +5,11 @@ import java.lang.Character.MAX_SURROGATE
 import java.lang.Character.MIN_SURROGATE
 
 object Internal {
-  /** TODO FILL IN */
+  /** Maximum size, in bytes, that the transfer buffer may grow to. */
   val defaultMaxBufferStartSize: Int = 64 * 1024
-  /** TODO FILL IN */
+  /** Minimum size, in bytes, of the transfer buffer. */
   val defaultMinBufferStartSize: Int = 64
-  /** TODO FILL IN */
+  /** Ratio of transferred bytes to buffer size above which the transfer buffer is doubled. */
   val defaultBufferGrowthRatio: Int = 4
 
   /**
@@ -52,7 +52,7 @@ object Internal {
     src.close()
   }
 
-  /** TODO FILL IN */
+  /** Transfers all data from the given `InputStream` to the `OutputStream` `dest` through a dynamically sized transfer buffer. */
   def transfer(src: InputStream,
                dest: OutputStream,
                minBufferSize: Int = defaultMinBufferStartSize,
@@ -66,9 +66,9 @@ object Internal {
   )
 
   // VENDORED FROM GUAVA
-  /** TODO FILL IN
+  /** Returns the number of bytes needed to encode the given string as UTF-8.
    *
-   *  @param sequence TODO FILL IN
+   *  @param sequence the string whose UTF-8 encoded length is computed
    */
   def encodedLength(sequence: String) = { // Warning to maintainers: this implementation is highly optimized.
     val utf16Length = sequence.length
