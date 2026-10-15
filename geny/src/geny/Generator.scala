@@ -29,7 +29,7 @@ import scala.reflect.ClassTag
  *  processing elements that the downstream Gen doesn't want/need to see
  *  anyway.
  *
- *  @tparam A TODO FILL IN
+ *  @tparam A the type of elements produced by this [[Generator]].
  */
 trait Generator[+A]{
   /**
@@ -47,19 +47,19 @@ trait Generator[+A]{
 
 
   // Actions
-  /** TODO FILL IN
+  /** Runs `f` on every element of this [[Generator]] in order, consuming the whole upstream.
    *
-   *  @param f TODO FILL IN
+   *  @param f the side-effecting function applied to each element in turn; if it throws, enumeration aborts and the exception propagates.
    */
   def foreach(f: A => Unit): Unit = generate{ x =>
     f(x)
     Generator.Continue
   }
 
-  /** TODO FILL IN
+  /** Returns the first element satisfying `f`, stopping upstream enumeration as soon as it is found.
    *
-   *  @param f TODO FILL IN
-   *  @return TODO FILL IN
+   *  @param f the predicate tested against each element in order; if it throws, enumeration aborts and the exception propagates.
+   *  @return the first element for which `f` returns true wrapped in `Some`, or `None` when no element satisfies `f`.
    */
   def find(f: A => Boolean): Option[A] = {
     var result: Option[A] = None
@@ -72,24 +72,24 @@ trait Generator[+A]{
     }
     result
   }
-  /** TODO FILL IN
+  /** Returns true when some element satisfies `f`, short-circuiting on the first match.
    *
-   *  @param f TODO FILL IN
+   *  @param f the predicate tested against each element in order; if it throws, enumeration aborts and the exception propagates.
    */
   def exists(f: A => Boolean) = find(f(_)).isDefined
-  /** TODO FILL IN
+  /** Returns true when this [[Generator]] contains an element equal to `a`.
    *
-   *  @param a TODO FILL IN
+   *  @param a the value compared to each element with `==`; any value is accepted, and a value with no equal element simply yields false.
    */
   def contains(a: Any) = exists(_ == a)
-  /** TODO FILL IN
+  /** Returns true when every element satisfies `f`, short-circuiting on the first failure.
    *
-   *  @param f TODO FILL IN
+   *  @param f the predicate tested against each element in order; an empty [[Generator]] yields true, and a throwing `f` aborts enumeration with that exception.
    */
   def forall(f: A => Boolean) = !exists(!f(_))
-  /** TODO FILL IN
+  /** Counts how many elements satisfy `f`, always traversing the whole [[Generator]].
    *
-   *  @param f TODO FILL IN
+   *  @param f the predicate tested against each element; defaults to always true so a bare `count()` counts every element, and a throwing `f` aborts enumeration with that exception.
    */
   def count(f: A => Boolean = ((_: Any) => true)) = {
     var result = 0
@@ -99,20 +99,20 @@ trait Generator[+A]{
     }
     result
   }
-  /** TODO FILL IN
+  /** Folds all elements left-to-right starting from `start`, delegating to [[foldLeft]].
    *
-   *  @tparam B TODO FILL IN
-   *  @param start TODO FILL IN
-   *  @param f TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam B the accumulator and result type, which may differ from `A`.
+   *  @param start the initial accumulator value, returned unchanged when this [[Generator]] is empty.
+   *  @param f the function combining the current accumulator with the next element; if it throws, enumeration aborts with that exception.
+   *  @return the final accumulator after processing every element.
    */
   def fold[B](start: B)(f: (B, A) => B): B = foldLeft(start)(f)
-  /** TODO FILL IN
+  /** Folds all elements left-to-right starting from `start`, traversing the whole [[Generator]].
    *
-   *  @tparam B TODO FILL IN
-   *  @param start TODO FILL IN
-   *  @param f TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam B the accumulator and result type, which may differ from `A`.
+   *  @param start the initial accumulator value, returned unchanged when this [[Generator]] is empty.
+   *  @param f the function combining the current accumulator with the next element; if it throws, enumeration aborts with that exception.
+   *  @return the final accumulator after processing every element.
    */
   def foldLeft[B](start: B)(f: (B, A) => B): B = {
     var result = start
@@ -124,18 +124,18 @@ trait Generator[+A]{
   }
 
 
-  /** TODO FILL IN
+  /** Reduces all elements with `f` using the first element as the seed, delegating to [[reduceLeft]].
    *
-   *  @tparam B TODO FILL IN
-   *  @param f TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam B the accumulation result type, a supertype of `A` so the first element can seed the accumulation.
+   *  @param f the function combining the current accumulation with the next element; if it throws, enumeration aborts with that exception.
+   *  @return the combined value; throws `UnsupportedOperationException` when this [[Generator]] is empty.
    */
   def reduce[B >: A](f: (B, A) => B): B = reduceLeft(f)
-  /** TODO FILL IN
+  /** Reduces all elements with `f` using the first element as the seed, traversing the whole [[Generator]].
    *
-   *  @tparam B TODO FILL IN
-   *  @param f TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam B the accumulation result type, a supertype of `A` so the first element can seed the accumulation.
+   *  @param f the function combining the current accumulation with the next element; if it throws, enumeration aborts with that exception.
+   *  @return the combined value; throws `UnsupportedOperationException` when this [[Generator]] is empty.
    */
   def reduceLeft[B >: A](f: (B, A) => B): B = {
     var result: Option[B] = None
@@ -152,126 +152,126 @@ trait Generator[+A]{
   }
 
   // Builders
-  /** TODO FILL IN
+  /** Returns a lazy [[Generator]] yielding only the elements for which `pred` returns true.
    *
-   *  @param pred TODO FILL IN
-   *  @return TODO FILL IN
+   *  @param pred the predicate tested against each element; if it throws for an element, enumeration aborts with that exception.
+   *  @return a lazy [[Generator]] view; this [[Generator]] is not consumed until the result is enumerated.
    */
   def filter(pred: A => Boolean): Generator[A] = new Generator.Filtered(this, pred)
-  /** TODO FILL IN
+  /** Returns a lazy [[Generator]] yielding only the elements for which `pred` returns true, for use in for-comprehensions.
    *
-   *  @param pred TODO FILL IN
-   *  @return TODO FILL IN
+   *  @param pred the predicate tested against each element; if it throws for an element, enumeration aborts with that exception.
+   *  @return a lazy [[Generator]] view; this [[Generator]] is not consumed until the result is enumerated.
    */
   def withFilter(pred: A => Boolean): Generator[A] = new Generator.Filtered(this, pred)
-  /** TODO FILL IN
+  /** Returns a lazy [[Generator]] applying `func` to every element of this [[Generator]].
    *
-   *  @tparam B TODO FILL IN
-   *  @param func TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam B the element type of the resulting [[Generator]].
+   *  @param func the transformation applied to each element in order; if it throws, enumeration aborts with that exception.
+   *  @return a lazy [[Generator]] view; this [[Generator]] is not consumed until the result is enumerated.
    */
   def map[B](func: A => B): Generator[B] = new Generator.Mapped[B, A](this, func)
-  /** TODO FILL IN
+  /** Returns a lazy [[Generator]] mapping each element to an inner [[Generator]] and enumerating its elements in order.
    *
-   *  @tparam B TODO FILL IN
-   *  @param func TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam B the element type of the inner and resulting [[Generator]]s.
+   *  @param func the function producing an inner [[Generator]] for each outer element; if it throws, or an inner [[Generator]] throws, enumeration aborts with that exception.
+   *  @return a lazy [[Generator]] view; an upstream [[Generator.End]] from downstream stops both the current inner and the outer enumeration.
    */
   def flatMap[B](func: A => Generator[B]): Generator[B] = new Generator.FlatMapped[B, A](this, func)
-  /** TODO FILL IN
+  /** Returns a lazy [[Generator]] keeping only elements where `func` is defined, transformed by `func`.
    *
-   *  @tparam B TODO FILL IN
-   *  @param func TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam B the element type of the resulting [[Generator]].
+   *  @param func the partial function tested with `isDefinedAt` and then applied; equivalent to `filter(func.isDefinedAt).map(func)`.
+   *  @return a lazy [[Generator]] view; this [[Generator]] is not consumed until the result is enumerated.
    */
   def collect[B](func: PartialFunction[A, B]): Generator[B] =
     filter(func.isDefinedAt).map(func)
-  /** TODO FILL IN
+  /** Returns the first element where `func` is defined, transformed by `func`, stopping enumeration at that match.
    *
-   *  @tparam B TODO FILL IN
-   *  @param func TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam B the result element type produced by `func`.
+   *  @param func the partial function tested with `isDefinedAt` and then applied to the first matching element.
+   *  @return the transformed first match wrapped in `Some`, or `None` when `func` is defined for no element.
    */
   def collectFirst[B](func: PartialFunction[A, B]): Option[B] =
     filter(func.isDefinedAt).map(func).headOption
 
-  /** TODO FILL IN
+  /** Flattens one level by converting each element to a [[Generator]] and concatenating the results via [[flatMap]].
    *
-   *  @tparam V TODO FILL IN
-   *  @param f TODO FILL IN
+   *  @tparam V the element type of the inner [[Generator]]s and of the resulting [[Generator]].
+   *  @param f the implicit conversion turning each element into a [[Generator]]; if it throws for an element, enumeration aborts with that exception.
    */
   def flatten[V](implicit f: A => Generator[V]) = this.flatMap[V]((x: A) => f(x))
-  /** TODO FILL IN
+  /** Returns a lazy [[Generator]] yielding the elements with indices in `[start, end)`.
    *
-   *  @param start TODO FILL IN
-   *  @param end TODO FILL IN
-   *  @return TODO FILL IN
+   *  @param start the inclusive zero-based index of the first element to yield; a negative value behaves like `0`.
+   *  @param end the exclusive zero-based index one past the last element to yield; values beyond the upstream length yield the whole remainder, and `end <= start` yields an empty [[Generator]].
+   *  @return a lazy [[Generator]] view; upstream enumeration stops with [[Generator.End]] once `end` elements have been counted.
    */
   def slice(start: Int, end: Int): Generator[A] = new Generator.Sliced(this, start, end)
-  /** TODO FILL IN
+  /** Groups elements into lazy non-overlapping chunks of `size`, delegating to [[sliding]] with `step == size`.
    *
-   *  @param size TODO FILL IN
-   *  @return TODO FILL IN
+   *  @param size the number of elements per chunk; must be positive, otherwise the underlying `require` throws `IllegalArgumentException`.
+   *  @return a lazy [[Generator]] of `Iterable[A]` chunks in order; the final chunk may hold fewer than `size` elements.
    */
   def grouped(size: Int): Generator[Iterable[A]] = sliding(size, step = size)
-  /** TODO FILL IN
+  /** Returns lazy sliding windows of `size` elements spaced `step` apart, with a trailing partial window when elements remain.
    *
-   *  @param size TODO FILL IN
-   *  @param step TODO FILL IN
-   *  @return TODO FILL IN
+   *  @param size the window size; must be at least `1`.
+   *  @param step the distance between the starts of consecutive windows; must be at least `1`.
+   *  @return a lazy [[Generator]] of `Iterable[A]` windows in order; throws `IllegalArgumentException` when `size` or `step` is less than `1`.
    */
   def sliding(size: Int, step: Int): Generator[Iterable[A]] = {
     require(size >= 1 && step >= 1, f"size=$size%d and step=$step%d, but both must be positive")
     new Generator.Sliding(this, size, step)
   }
-  /** TODO FILL IN
+  /** Returns a lazy [[Generator]] yielding at most the first `n` elements of this [[Generator]].
    *
-   *  @param n TODO FILL IN
+   *  @param n the maximum number of elements to yield; `n <= 0` yields an empty [[Generator]], and `n` beyond the upstream length yields the whole [[Generator]].
    */
   def take(n: Int) = slice(0, n)
-  /** TODO FILL IN
+  /** Returns a lazy [[Generator]] discarding the first `n` elements and yielding the remainder.
    *
-   *  @param n TODO FILL IN
+   *  @param n the number of leading elements to skip; `n <= 0` yields the whole [[Generator]], and `n` beyond the upstream length yields an empty [[Generator]].
    */
   def drop(n: Int) = slice(n, Int.MaxValue)
-  /** TODO FILL IN
+  /** Returns a lazy [[Generator]] yielding leading elements while `pred` holds, ending at the first failure.
    *
-   *  @param pred TODO FILL IN
-   *  @return TODO FILL IN
+   *  @param pred the predicate tested against each leading element; the first element with `pred` false ends upstream enumeration with [[Generator.End]].
+   *  @return a lazy [[Generator]] view; this [[Generator]] is not consumed beyond the first failing element until the result is enumerated.
    */
   def takeWhile(pred: A => Boolean): Generator[A] = new Generator.TakeWhile(this, pred)
-  /** TODO FILL IN
+  /** Returns a lazy [[Generator]] skipping leading elements while `pred` holds, then yielding the first failure and everything after it.
    *
-   *  @param pred TODO FILL IN
-   *  @return TODO FILL IN
+   *  @param pred the predicate tested against each leading element; once an element fails `pred`, that element and all later elements are yielded unconditionally.
+   *  @return a lazy [[Generator]] view; this [[Generator]] is not consumed until the result is enumerated.
    */
   def dropWhile(pred: A => Boolean): Generator[A] = new Generator.DropWhile(this, pred)
-  /** TODO FILL IN */
+  /** Returns a lazy [[Generator]] pairing each element with its zero-based index. */
   def zipWithIndex: Generator[(A, Int)] = new Generator.ZipWithIndexed(this)
-  /** TODO FILL IN
+  /** Returns a lazy [[Generator]] pairing each element of this [[Generator]] with the next element of `other` in order.
    *
-   *  @tparam B TODO FILL IN
-   *  @param other TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam B the element type of the `other` collection.
+   *  @param other the finite `Iterable` supplying the second half of each pair; enumeration ends with [[Generator.End]] as soon as either side is exhausted.
+   *  @return a lazy [[Generator]] of pairs; this [[Generator]] is not consumed until the result is enumerated.
    */
   def zip[B](other: Iterable[B]): Generator[(A, B)] = new Generator.Zipped(this, other)
-  /** TODO FILL IN
+  /** Returns a lazy [[Generator]] enumerating this [[Generator]] followed by `other`.
    *
-   *  @tparam B TODO FILL IN
-   *  @param other TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam B the common supertype of both [[Generator]]s element types.
+   *  @param other the [[Generator]] enumerated after this one; it is skipped when downstream returns [[Generator.End]] during the first half.
+   *  @return a lazy concatenated [[Generator]] view; neither input is consumed until the result is enumerated.
    */
   def ++[B >: A](other: Generator[B]): Generator[B] = new Generator.Concat(this, other)
 
   // Conversions
-  /** TODO FILL IN */
+  /** Returns the first element of this [[Generator]], throwing `NoSuchElementException` when it is empty. */
   def head = take(1).toSeq.head
-  /** TODO FILL IN */
+  /** Returns the first element wrapped in `Some`, or `None` when this [[Generator]] is empty. */
   def headOption = take(1).toSeq.headOption
-  /** TODO FILL IN
+  /** Collects every element of this [[Generator]] in order into a fresh `mutable.Buffer`.
    *
-   *  @tparam B TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam B the element type of the buffer, a supertype of `A`.
+   *  @return a new buffer holding all elements in encounter order.
    */
   def toBuffer[B >: A]: mutable.Buffer[B] = {
     val arr = mutable.Buffer.empty[B]
@@ -279,29 +279,29 @@ trait Generator[+A]{
     arr
 
   }
-  /** TODO FILL IN
+  /** Collects every element of this [[Generator]] in order into an `Array` via [[toBuffer]].
    *
-   *  @tparam B TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam B the array element type, a supertype of `A`, requiring an implicit `ClassTag` to allocate the array.
+   *  @return a new array holding all elements in encounter order.
    */
   def toArray[B >: A : ClassTag]: Array[B] = toBuffer.toArray
-  /** TODO FILL IN */
+  /** Collects every element of this [[Generator]] into a `Seq` by delegating to [[toVector]]. */
   def toSeq: Seq[A] = toVector
-  /** TODO FILL IN */
+  /** Collects every element of this [[Generator]] in order into a `List` via [[toBuffer]]. */
   def toList = toBuffer.toList
-  /** TODO FILL IN
+  /** Collects every element of this [[Generator]] into a `Set`, discarding duplicate elements.
    *
-   *  @tparam B TODO FILL IN
+   *  @tparam B the set element type, a supertype of `A`.
    */
   def toSet[B >: A] = toBuffer[B].toSet
-  /** TODO FILL IN */
+  /** Collects every element of this [[Generator]] in order into a `Vector` via [[toBuffer]]. */
   def toVector = toBuffer.toVector
-  /** TODO FILL IN
+  /** Builds a `String` from all elements with a start, separator, and end, traversing the whole [[Generator]].
    *
-   *  @param start TODO FILL IN
-   *  @param sep TODO FILL IN
-   *  @param end TODO FILL IN
-   *  @return TODO FILL IN
+   *  @param start the prefix prepended before the first element, even when this [[Generator]] is empty.
+   *  @param sep the separator inserted between consecutive elements but never before the first one.
+   *  @param end the suffix appended after the last element, even when this [[Generator]] is empty.
+   *  @return `start` plus the elements `toString`s joined by `sep` plus `end`.
    */
   def mkString(start: String, sep: String, end: String): String = {
     val sb = new StringBuilder
@@ -317,58 +317,58 @@ trait Generator[+A]{
     sb.append(end)
     sb.toString()
   }
-  /** TODO FILL IN
+  /** Builds a `String` from all elements joined by `sep` with an empty start and end, delegating to [[mkString]].
    *
-   *  @param sep TODO FILL IN
-   *  @return TODO FILL IN
+   *  @param sep the separator inserted between consecutive elements but never before the first one.
+   *  @return the elements `toString`s joined by `sep`.
    */
   def mkString(sep: String): String = mkString("", sep, "")
-  /** TODO FILL IN */
+  /** Concatenates the `toString` of every element with no separator, delegating to [[mkString]]. */
   def mkString: String = mkString("")
 
 
-  /** TODO FILL IN
+  /** Sums all elements with `num`, starting from `num.zero` and traversing the whole [[Generator]].
    *
-   *  @tparam B TODO FILL IN
-   *  @param num TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam B the numeric result type, a supertype of `A`.
+   *  @param num the implicit `Numeric` supplying `zero` and `plus`; required to combine elements.
+   *  @return the total, or `num.zero` when this [[Generator]] is empty.
    */
   def sum[B >: A](implicit num: Numeric[B]): B = foldLeft(num.zero)(num.plus)
 
-  /** TODO FILL IN
+  /** Multiplies all elements with `num`, starting from `num.one` and traversing the whole [[Generator]].
    *
-   *  @tparam B TODO FILL IN
-   *  @param num TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam B the numeric result type, a supertype of `A`.
+   *  @param num the implicit `Numeric` supplying `one` and `times`; required to combine elements.
+   *  @return the product, or `num.one` when this [[Generator]] is empty.
    */
   def product[B >: A](implicit num: Numeric[B]): B = foldLeft(num.one)(num.times)
 
-  /** TODO FILL IN
+  /** Returns the smallest element according to `cmp`, using [[reduceLeft]] over the whole [[Generator]].
    *
-   *  @tparam B TODO FILL IN
-   *  @param cmp TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam B the compared supertype of `A` for which the `Ordering` is defined.
+   *  @param cmp the implicit `Ordering` used with `lteq` to pick the smaller of two candidates.
+   *  @return one of the elements of this [[Generator]]; throws `UnsupportedOperationException` when it is empty.
    */
   def min[B >: A](implicit cmp: Ordering[B]): A = {
     reduceLeft((x, y) => if (cmp.lteq(x, y)) x else y)
   }
 
-  /** TODO FILL IN
+  /** Returns the largest element according to `cmp`, using [[reduceLeft]] over the whole [[Generator]].
    *
-   *  @tparam B TODO FILL IN
-   *  @param cmp TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam B the compared supertype of `A` for which the `Ordering` is defined.
+   *  @param cmp the implicit `Ordering` used with `gteq` to pick the larger of two candidates.
+   *  @return one of the elements of this [[Generator]]; throws `UnsupportedOperationException` when it is empty.
    */
   def max[B >: A](implicit cmp: Ordering[B]): A = {
     reduceLeft((x, y) => if (cmp.gteq(x, y)) x else y)
   }
 
-  /** TODO FILL IN
+  /** Returns the element whose `f` key is greatest according to `cmp`, keeping the first on ties.
    *
-   *  @tparam B TODO FILL IN
-   *  @param f TODO FILL IN
-   *  @param cmp TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam B the comparison key type produced by `f`.
+   *  @param f the function extracting the comparison key from each element; if it throws, enumeration aborts with that exception.
+   *  @param cmp the implicit `Ordering` used with `gt` so only a strictly greater key replaces the current best.
+   *  @return the winning element; `null` cast to `A` when this [[Generator]] is empty rather than throwing.
    */
   def maxBy[B](f: A => B)(implicit cmp: Ordering[B]): A = {
     var maxF: B = null.asInstanceOf[B]
@@ -385,12 +385,12 @@ trait Generator[+A]{
     }
     maxElem
   }
-  /** TODO FILL IN
+  /** Returns the element whose `f` key is smallest according to `cmp`, keeping the first on ties.
    *
-   *  @tparam B TODO FILL IN
-   *  @param f TODO FILL IN
-   *  @param cmp TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam B the comparison key type produced by `f`.
+   *  @param f the function extracting the comparison key from each element; if it throws, enumeration aborts with that exception.
+   *  @param cmp the implicit `Ordering` used with `lt` so only a strictly smaller key replaces the current best.
+   *  @return the winning element; `null` cast to `A` when this [[Generator]] is empty rather than throwing.
    */
   def minBy[B](f: A => B)(implicit cmp: Ordering[B]): A = {
     var minF: B = null.asInstanceOf[B]
@@ -411,26 +411,26 @@ trait Generator[+A]{
 }
 
 object Generator{
-  /** TODO FILL IN */
+  /** Marker for control-flow signals that a [[generate]] callback returns to steer upstream enumeration. */
   sealed trait Action
   object End extends Action
   object Continue extends Action
 
 
-  /** TODO FILL IN
+  /** Creates a [[Generator]] yielding each of `xs` in order, delegating to [[from]].
    *
-   *  @tparam T TODO FILL IN
-   *  @param xs TODO FILL IN
+   *  @tparam T the type of the supplied elements and of the resulting [[Generator]].
+   *  @param xs the varargs elements to yield in order on each enumeration.
    */
   def apply[T](xs: T*) = from(xs)
 
-  /** TODO FILL IN
+  /** Wraps any collection convertible to `TraversableOnce` in a [[Generator]] that pulls via `toIterator`.
    *
-   *  @tparam M TODO FILL IN
-   *  @tparam T TODO FILL IN
-   *  @param t TODO FILL IN
-   *  @param convert TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam M the source container constructor, such as `List` or `Option`.
+   *  @tparam T the element type of the source and of the resulting [[Generator]].
+   *  @param t the source collection enumerated once per [[generate]] call.
+   *  @param convert the implicit conversion exposing `t` as a `TraversableOnce[T]`; a missing or throwing conversion fails at call time.
+   *  @return a fresh [[Generator]] that stops pulling early when downstream returns [[Generator.End]].
    */
   implicit def from[M[_], T](t: M[T])(implicit convert: (M[T] => TraversableOnce[T])): Generator[T] = new Generator[T]{
     def generate(f: T => Generator.Action) = {
@@ -446,18 +446,18 @@ object Generator{
   }
 
 
-  /** TODO FILL IN
+  /** Creates a [[Generator]] that builds a fresh `Iterator` plus cleanup action on every [[generate]] call.
    *
-   *  @tparam T TODO FILL IN
-   *  @param makeIterator TODO FILL IN
-   *  @return TODO FILL IN
+   *  @tparam T the type of elements produced by the iterators.
+   *  @param makeIterator the by-name pair of a fresh `Iterator[T]` and its `() => Unit` cleanup; the cleanup always runs in a `finally` block.
+   *  @return a [[Generator]] whose [[generate]] runs the cleanup even on early [[Generator.End]] or on exception.
    */
   def selfClosing[T](makeIterator: => (Iterator[T], () => Unit)): Generator[T] = new SelfClosing(makeIterator)
 
   private class SelfClosing[+T](makeIterator: => (Iterator[T], () => Unit)) extends Generator[T]{
-    /** TODO FILL IN
+    /** Enumerates the freshly built iterator until exhaustion or [[Generator.End]], always running its cleanup in `finally`.
      *
-     *  @param f TODO FILL IN
+     *  @param f the callback applied to each iterator element; its [[Generator.End]] stops pulling, and a throw still triggers cleanup before propagating.
      */
     def generate(f: T => Generator.Action) = {
       var last: Generator.Action = Generator.Continue
@@ -471,16 +471,16 @@ object Generator{
         onComplete()
       }
     }
-    /** TODO FILL IN */
+    /** Returns the fixed placeholder `"Gen.SelfClosing(...)"` without describing the contents. */
     override def toString = s"Gen.SelfClosing(...)"
   }
 
 
 
   private class Concat[+T](inner: Generator[T], other: Generator[T]) extends Generator[T] {
-    /** TODO FILL IN
+    /** Enumerates `inner` then `other` with `f`, skipping `other` when `inner` stops with [[Generator.End]].
      *
-     *  @param f TODO FILL IN
+     *  @param f the callback applied to each element of both halves; its [[Generator.End]] is propagated as the result.
      */
     def generate(f: T => Generator.Action) = {
       val res1 = inner.generate(f)
@@ -488,14 +488,14 @@ object Generator{
       else other.generate(f)
 
     }
-    /** TODO FILL IN */
+    /** Returns `"<inner> ++ <other>"` describing the two concatenated [[Generator]]s. */
     override def toString = s"$inner ++ $other"
   }
 
   private class ZipWithIndexed[+T](inner: Generator[T]) extends Generator[(T, Int)] {
-    /** TODO FILL IN
+    /** Pairs each upstream element with its incrementing zero-based index and forwards the pair to `f`.
      *
-     *  @param f TODO FILL IN
+     *  @param f the callback receiving each `(element, index)` pair; its [[Generator.End]] stops the upstream enumeration.
      */
     def generate(f: ((T, Int)) => Generator.Action) = {
       var i = 0
@@ -505,14 +505,14 @@ object Generator{
         res
       }
     }
-    /** TODO FILL IN */
+    /** Returns `"<inner>.zipWithIndex"` describing the wrapped [[Generator]]. */
     override def toString = s"$inner.zipWithIndex"
   }
 
   private class Zipped[+T, V](inner: Generator[T], other: Iterable[V]) extends Generator[(T, V)] {
-    /** TODO FILL IN
+    /** Pairs each upstream element with the next element of `other`, stopping upstream when `other` runs out.
      *
-     *  @param f TODO FILL IN
+     *  @param f the callback receiving each `(element, otherElement)` pair; returning [[Generator.End]] from `f` or exhausting `other` ends the upstream enumeration.
      */
     def generate(f: ((T, V)) => Generator.Action) = {
       val iter = other.iterator
@@ -521,38 +521,38 @@ object Generator{
         else f(t, iter.next())
       }
     }
-    /** TODO FILL IN */
+    /** Returns `"<inner>.zip(<other>)"` describing the zipped [[Generator]] and collection. */
     override def toString = s"$inner.zip($other)"
   }
 
   private class Filtered[+T](inner: Generator[T], pred: T => Boolean) extends Generator[T]{
-    /** TODO FILL IN
+    /** Forwards only upstream elements satisfying `pred`, returning [[Generator.Continue]] for rejected ones.
      *
-     *  @param f TODO FILL IN
+     *  @param f the callback applied to each accepted element; its [[Generator.End]] stops the upstream enumeration.
      */
     def generate(f: T => Generator.Action) = {
       inner.generate{t => if (pred(t)) f(t) else Generator.Continue}
     }
-    /** TODO FILL IN */
+    /** Returns `"<inner>.filter(<pred>)"` describing the wrapped [[Generator]] and predicate. */
     override def toString = s"$inner.filter($pred)"
   }
 
   private class Mapped[+T, V](inner: Generator[V], func: V => T) extends Generator[T]{
-    /** TODO FILL IN
+    /** Applies `func` to each upstream element and forwards the result to `f`.
      *
-     *  @param f TODO FILL IN
+     *  @param f the callback applied to each transformed element; its [[Generator.End]] stops the upstream enumeration, and a `func` throw aborts with that exception.
      */
     def generate(f: T => Generator.Action) = {
       inner.generate{t => f(func(t))}
     }
-    /** TODO FILL IN */
+    /** Returns `"<inner>.map(<func>)"` describing the wrapped [[Generator]] and mapping function. */
     override def toString = s"$inner.map($func)"
   }
 
   private class FlatMapped[+T, V](inner: Generator[V], func: V => Generator[T]) extends Generator[T]{
-    /** TODO FILL IN
+    /** Maps each outer element to an inner [[Generator]] and forwards all of its elements to `f` in order.
      *
-     *  @param f TODO FILL IN
+     *  @param f the callback applied to every inner element; its [[Generator.End]] stops both the current inner and the outer enumeration.
      */
     def generate(f: T => Generator.Action) = {
 
@@ -562,14 +562,14 @@ object Generator{
         }
       }
     }
-    /** TODO FILL IN */
+    /** Returns `"<inner>.map(<func>)"` describing the wrapped [[Generator]] and mapping function. */
     override def toString = s"$inner.map($func)"
   }
 
   private class Sliding[+T](inner: Generator[T], size: Int, step: Int) extends Generator[Iterable[T]] {
-    /** TODO FILL IN
+    /** Buffers upstream elements and forwards windows of `size` elements spaced `step` apart, plus a trailing partial window.
      *
-     *  @param f TODO FILL IN
+     *  @param f the callback receiving each `Iterable[T]` window; its [[Generator.End]] stops upstream enumeration and suppresses the trailing emit.
      */
     def generate(f: Iterable[T] => Generator.Action) = {
       val builder = Iterable.newBuilder[T]
@@ -603,9 +603,9 @@ object Generator{
   }
 
   private class Sliced[+T](inner: Generator[T], start: Int, end: Int) extends Generator[T]{
-    /** TODO FILL IN
+    /** Skips the first `start` elements then forwards elements until index `end`, ending upstream with [[Generator.End]] at the limit.
      *
-     *  @param f TODO FILL IN
+     *  @param f the callback applied to each in-slice element; evaluating it on the final element and then returning [[Generator.End]] avoids consuming one extra upstream element.
      */
     def generate(f: T => Generator.Action) = {
       var count = 0
@@ -628,14 +628,14 @@ object Generator{
         } else Generator.End
       }
     }
-    /** TODO FILL IN */
+    /** Returns `"<inner>.slice(<start>, <end>)"` describing the wrapped [[Generator]] and bounds. */
     override def toString = s"$inner.slice($start, $end)"
   }
 
   private class TakeWhile[+T](inner: Generator[T], pred: T => Boolean) extends Generator[T]{
-    /** TODO FILL IN
+    /** Forwards leading elements while `pred` holds, returning [[Generator.End]] at the first failure without consuming further upstream.
      *
-     *  @param f TODO FILL IN
+     *  @param f the callback applied to each accepted leading element; its [[Generator.End]] likewise stops the upstream enumeration.
      */
     def generate(f: T => Generator.Action) = {
       inner.generate{t =>
@@ -646,14 +646,14 @@ object Generator{
         }
       }
     }
-    /** TODO FILL IN */
+    /** Returns `"<inner>.takeWhile(<pred>)"` describing the wrapped [[Generator]] and predicate. */
     override def toString = s"$inner.takeWhile($pred)"
   }
 
   private class DropWhile[+T](inner: Generator[T], pred: T => Boolean) extends Generator[T]{
-    /** TODO FILL IN
+    /** Skips leading elements while `pred` holds, then forwards the first failure and every later element unconditionally.
      *
-     *  @param f TODO FILL IN
+     *  @param f the callback applied to the first failing element and all following ones; its [[Generator.End]] stops the upstream enumeration.
      */
     def generate(f: T => Generator.Action) = {
       var started = false
@@ -667,7 +667,7 @@ object Generator{
         }else f(t)
       }
     }
-    /** TODO FILL IN */
+    /** Returns `"<inner>.dropWhile(<pred>)"` describing the wrapped [[Generator]] and predicate. */
     override def toString = s"$inner.dropWhile($pred)"
   }
 

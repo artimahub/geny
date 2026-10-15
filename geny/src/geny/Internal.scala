@@ -5,11 +5,20 @@ import java.lang.Character.MAX_SURROGATE
 import java.lang.Character.MIN_SURROGATE
 
 object Internal {
-  /** TODO FILL IN */
+  /** Default upper bound in bytes for the transfer buffer used by [[transfer0]] and [[transfer]].
+    *
+    * [[transfer0]] clamps its initial and doubled buffer sizes to at most this value, which is 64 KiB.
+    */
   val defaultMaxBufferStartSize: Int = 64 * 1024
-  /** TODO FILL IN */
+  /** Default lower bound in bytes for the transfer buffer used by [[transfer0]] and [[transfer]].
+    *
+    * [[transfer0]] clamps its initial and doubled buffer sizes to at least this value, which is 64 bytes.
+    */
   val defaultMinBufferStartSize: Int = 64
-  /** TODO FILL IN */
+  /** Default growth threshold multiplier used by [[transfer0]] and [[transfer]].
+    *
+    * [[transfer0]] doubles its buffer once the total bytes transferred exceed the current buffer length times this ratio.
+    */
   val defaultBufferGrowthRatio: Int = 4
 
   /**
@@ -52,7 +61,18 @@ object Internal {
     src.close()
   }
 
-  /** TODO FILL IN */
+  /**
+    * Copies all remaining bytes from `src` to `dest` by delegating to [[transfer0]].
+    *
+    * Reads `src` to end with a dynamically sized buffer and writes each chunk to `dest`,
+    * then closes `src` while leaving `dest` open.
+    *
+    *  @param src the open `InputStream` to read from; must be non-null, otherwise a `NullPointerException` is thrown, and a closed or failing stream throws `IOException` from `available`, `read`, or `close`.
+    *  @param dest the open `OutputStream` receiving each chunk via `write(buffer, 0, read)`; must be non-null and open, otherwise a `NullPointerException` or `IOException` is thrown when the first chunk is written, and it is never closed here.
+    *  @param minBufferSize the minimum initial and grown buffer size in bytes; should be non-negative and `<= maxBufferSize`, otherwise the clamp in [[transfer0]] can request a negatively sized or oversized array and throw.
+    *  @param maxBufferSize the maximum buffer size in bytes that growth never exceeds; should be non-negative and `>= minBufferSize`, otherwise sizing falls back to `minBufferSize` without further growth.
+    *  @param bufferGrowthRatio the multiplier controlling growth in [[transfer0]]; the buffer doubles once total bytes transferred exceed `buffer.length * bufferGrowthRatio`, so a non-positive value causes growth after the first chunk up to `maxBufferSize`.
+    */
   def transfer(src: InputStream,
                dest: OutputStream,
                minBufferSize: Int = defaultMinBufferStartSize,
@@ -66,9 +86,11 @@ object Internal {
   )
 
   // VENDORED FROM GUAVA
-  /** TODO FILL IN
+  /** Returns the number of bytes needed to encode `sequence` as UTF-8 without performing the encoding.
    *
-   *  @param sequence TODO FILL IN
+   * Counts ASCII as one byte, `U+0080` to `U+07FF` as two bytes, BMP characters at or above `U+0800` as three bytes, and each well-formed surrogate pair as four bytes.
+   *  @param sequence the `String` whose UTF-8 length is computed; must be non-null and contain only well-formed surrogate pairs, so `null` throws `NullPointerException` and an unpaired surrogate throws `IllegalArgumentException`.
+   *  @return the UTF-8 encoded length in bytes; throws `IllegalArgumentException` when the length does not fit in an `Int`.
    */
   def encodedLength(sequence: String) = { // Warning to maintainers: this implementation is highly optimized.
     val utf16Length = sequence.length
