@@ -39,9 +39,9 @@ trait Generator[+A]{
     * @param handleItem How to handle a single item: performs any desired side
     *                   effects, and returns a [[Generator.Action]] that
     *                   determines how to continue the enumeration.
-    * @return an integer stating how many skipped elements from the
-    *         `startingSkipped` input remain to be skipped after this
-    *         `generate` call has completed.
+    * @return the [[Generator.Action]] signalling how enumeration ended:
+    *         [[Generator.End]] when downstream requested an early stop,
+    *         [[Generator.Continue]] when the upstream was fully consumed.
     */
   def generate(handleItem: A => Generator.Action): Generator.Action
 
