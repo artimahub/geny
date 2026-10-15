@@ -79,6 +79,9 @@ trait ByteData {
    */
   def lines(codec: Codec): Vector[String] = Predef.augmentString(text(codec)).lines.toVector
 }
+/** The companion of [[ByteData]], holding the [[ByteData.Chunks]] case class
+ *  that concatenates several [[Bytes]] into a single [[ByteData]].
+ */
 object ByteData{
   /**
    * A [[ByteData]] assembled by concatenating several [[Bytes]] instances, in

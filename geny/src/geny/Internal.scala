@@ -4,6 +4,11 @@ import java.io.{InputStream, OutputStream}
 import java.lang.Character.MAX_SURROGATE
 import java.lang.Character.MIN_SURROGATE
 
+/** The buffer-sizing defaults and byte-handling helpers shared by the
+ *  [[Writable]] implementations: the constants that size the transfer buffer
+ *  of `transfer0`, the `transfer` built on top of it, and `encodedLength` for
+ *  measuring the UTF-8 length of a `String`.
+ */
 object Internal {
   /** The default ceiling for the transfer buffer of [[transfer0]] and
    *  [[transfer]]: 65536 bytes.
@@ -37,13 +42,13 @@ object Internal {
   val defaultBufferGrowthRatio: Int = 4
 
   /**
-   * Transfers data from the given `InputStream` through a to a [[sink]]
-   * function through a dynamically sized transfer buffer.
+   * Transfers data from the given `InputStream` through a `sink` function
+   * through a dynamically sized transfer buffer.
    *
    * The buffer is sized based on the `.available` number on the input stream,
-   * clamped a [[minBufferSize]] and [[maxBufferSize]] size, and allowed to
+   * clamped to between `minBufferSize` and `maxBufferSize`, and allowed to
    * grow in increments of 2x if the total amount of bytes transferred exceeds
-   * the size of the buffer by [[bufferGrowthRatio]].
+   * the size of the buffer by `bufferGrowthRatio`.
    *
    * This should allow efficient processing of `InputStream`s of all sizes,
    * from the tiny to the very large, without over- or under- allocating the

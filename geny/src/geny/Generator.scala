@@ -43,9 +43,12 @@ trait Generator[+A]{
      * @param handleItem How to handle a single item: performs any desired side
      *                   effects, and returns a [[Generator.Action]] that
      *                   determines how to continue the enumeration.
-     * @return an integer stating how many skipped elements from the
-     *         `startingSkipped` input remain to be skipped after this
-     *         `generate` call has completed.
+     * @return the [[Generator.Action]] that ended the enumeration: normally the
+     *         action `handleItem` returned for the last element it was handed,
+     *         or [[Generator.Continue]] when this [[Generator]] ran out of
+     *         elements first. An implementation may also end the enumeration
+     *         with [[Generator.End]] on its own account, without the handler
+     *         asking for it.
      */
   def generate(handleItem: A => Generator.Action): Generator.Action
 
@@ -243,7 +246,7 @@ trait Generator[+A]{
    *            change the element type, including widening or discarding it.
    *  @param func applied to each element in enumeration order. An exception it
    *              throws propagates out and abandons the upstream enumeration.
-   *  @return a new [[Generator[B]] that hands `func`'s results to the
+   *  @return a new `Generator[B]` that hands `func`'s results to the
    *          downstream handler.
    */
   def map[B](func: A => B): Generator[B] = new Generator.Mapped[B, A](this, func)
@@ -257,7 +260,7 @@ trait Generator[+A]{
    *              return a non-`null` [[Generator]], since a `null` result makes
    *              the subsequent enumeration fail with a
    *              `NullPointerException`.
-   *  @return a new [[Generator[B]] over the concatenation of all the inner
+   *  @return a new `Generator[B]` over the concatenation of all the inner
    *          generators. Returning [[Generator.End]] from the downstream
    *          handler stops both the current inner generator and the outer
    *          enumeration, because that action is what the upstream
@@ -273,7 +276,7 @@ trait Generator[+A]{
    *              elements survive; an element for which `isDefinedAt` is `true`
    *              but whose body is not defined throws `MatchError` when the
    *              result is enumerated.
-   *  @return a new [[Generator[B]] over the mapped elements, in their original
+   *  @return a new `Generator[B]` over the mapped elements, in their original
    *          order.
    */
   def collect[B](func: PartialFunction[A, B]): Generator[B] =
@@ -345,8 +348,9 @@ trait Generator[+A]{
    *          than `size`. It is only emitted after the upstream [[Generator]] is
    *          exhausted and only if the handler's last action was
    *          [[Generator.Continue]].
-   *  @throws IllegalArgumentException if either argument is below `1`, with the
-   *          message `size=%d and step=%d, but both must be positive`.
+   *  @throws IllegalArgumentException if either argument is below `1`, with a
+   *          message of the form `size=0 and step=1, but both must be positive`
+   *          where the two numbers are the offending `size` and `step`.
    */
   def sliding(size: Int, step: Int): Generator[Iterable[A]] = {
     require(size >= 1 && step >= 1, f"size=$size%d and step=$step%d, but both must be positive")
@@ -600,7 +604,8 @@ trait Generator[+A]{
    *          [[Generator]] does not throw here: it yields `null`, so the result
    *          has to be checked before it is used.
    *  @throws java.lang.NullPointerException from the comparison if `f` returns
-   *          `null` for any element after the first.
+   *          `null` for any element and this [[Generator]] goes on to yield a
+   *          second one, since `cmp` is then handed a `null` key to order.
    */
   def maxBy[B](f: A => B)(implicit cmp: Ordering[B]): A = {
     var maxF: B = null.asInstanceOf[B]
@@ -633,7 +638,8 @@ trait Generator[+A]{
    *          [[Generator]] does not throw here: it yields `null`, so the result
    *          has to be checked before it is used.
    *  @throws java.lang.NullPointerException from the comparison if `f` returns
-   *          `null` for any element after the first.
+   *          `null` for any element and this [[Generator]] goes on to yield a
+   *          second one, since `cmp` is then handed a `null` key to order.
    */
   def minBy[B](f: A => B)(implicit cmp: Ordering[B]): A = {
     var minF: B = null.asInstanceOf[B]
@@ -653,6 +659,11 @@ trait Generator[+A]{
 
 }
 
+/** The companion of [[Generator]], holding the [[Generator.Action]] protocol
+ *  that `generate` speaks, the factories that lift values and collections into
+ *  a [[Generator]], and the private classes the trait's transformations are
+ *  built on.
+ */
 object Generator{
   /** The control-flow token that the handler passed to
    *  [[Generator.generate]] returns for each element: it tells the upstream
@@ -662,7 +673,15 @@ object Generator{
    *  elements". Being sealed, no other action can exist.
    */
   sealed trait Action
+  /** The [[Generator.Action]] that stops the upstream [[Generator]] at once: the
+   *  element the handler was given is the last one generated, and whatever the
+   *  [[Generator]] still held is never produced.
+   */
   object End extends Action
+  /** The [[Generator.Action]] that lets the upstream [[Generator]] keep
+   *  producing elements. An enumeration that merely ran out of elements also
+   *  ends with it, so it doubles as "finished normally".
+   */
   object Continue extends Action
 
 
@@ -690,7 +709,7 @@ object Generator{
    *  @param convert the implicit function that turns `t` into a
    *                `TraversableOnce`. A call with no matching instance in
    *                scope does not compile.
-   *  @return a [[Generator[T]] whose `generate` pulls elements from the
+   *  @return a `Generator[T]` whose `generate` pulls elements from the
    *          converted container until the iterator is exhausted or the handler
    *          returns something other than [[Generator.Continue]]. It returns the
    *          handler's last action, or [[Generator.Continue]] if the container is
@@ -903,8 +922,12 @@ object Generator{
      *  @param f the handler for each window. If it returns [[Generator.End]] the
      *           window that was handed to it has still been seen by it, but
      *           whatever is still buffered is discarded and never emitted.
-     *  @return the last action from `f`, or [[Generator.Continue]] if `inner`
-     *          was empty and the handler was therefore never called.
+     *  @return the last action from an `f` call made while `inner` was still
+     *          producing, or [[Generator.Continue]] if `inner` was empty and the
+     *          handler was therefore never called. The action from the trailing
+     *          short final window is discarded, so a handler that answers
+     *          [[Generator.End]] on that last window still yields
+     *          [[Generator.Continue]] here.
      */
     def generate(f: Iterable[T] => Generator.Action) = {
       val builder = Iterable.newBuilder[T]

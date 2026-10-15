@@ -57,6 +57,11 @@ trait Writable extends Any{
    */
   def contentLength: Option[Long] = None
 }
+/** The companion of [[Writable]], holding the implicit conversions that build
+ *  one from a `String`, an `Array[Byte]` or a `java.nio.ByteBuffer`. It extends
+ *  [[LowPriWritable]], which puts the `readableWritable` conversion in implicit
+ *  scope alongside them.
+ */
 object Writable extends LowPriWritable {
   /** Implicitly converts a [[String]] into a [[Writable]] that emits its UTF-8
    *  encoding, so `"hello".writeBytesTo(out)` compiles.
@@ -130,9 +135,9 @@ object Writable extends LowPriWritable {
     override def httpContentType = Some("application/octet-stream")
     /** `Some(a.length)`, re-read on each call rather than cached.
      *
-     *  Since the array is not copied, the value tracks mutation of it — but it
-     *  is not validated against what [[writeBytesTo]] later produces, so
-     *  resizing the array between the two makes the reported length wrong.
+     *  An array's length is fixed for its lifetime, so this always agrees with
+     *  the number of bytes [[writeBytesTo]] hands to `out`. Mutating the array's
+     *  contents in between changes which bytes are written, not how many.
      */
     override def contentLength = Some(a.length)
   }
@@ -286,6 +291,10 @@ trait Readable extends Writable{
    */
   def writeBytesTo(out: OutputStream): Unit = readBytesThrough(Internal.transfer(_, out))
 }
+/** The companion of [[Readable]], holding the implicit conversions that build
+ *  one from a `String`, an `Array[Byte]`, a `java.nio.ByteBuffer` or an
+ *  `InputStream`.
+ */
 object Readable{
   /** Implicitly converts a [[String]] into a [[Readable]] over its UTF-8
    *  encoding, so `"hello".readBytesThrough(f)` compiles.
