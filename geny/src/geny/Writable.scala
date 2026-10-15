@@ -23,60 +23,149 @@ import sun.nio.cs.StreamEncoder
  * methods or additional implicit constructors that make sense in their context.
  */
 trait Writable extends Any{
-  /** TODO FILL IN
+  /** Writes the complete payload of this [[Writable]] to `out`, in order, and
+   *  returns once every byte has been handed to the stream.
    *
-   *  @param out TODO FILL IN
+   *  The stream belongs to the caller: implementations must leave it open and
+   *  unflushed and must not close it, so flushing and closing stay the caller's
+   *  job.
+   *
+   *  @param out the stream that receives the bytes. It is written to directly,
+   *             so a `null` is not rejected up front — it surfaces as a
+   *             `NullPointerException` from the first write that actually
+   *             carries bytes, which means an empty payload may never notice.
+   *             A failure in `out` (a full disk, a closed socket) propagates as
+   *             an `IOException`, leaving the payload partially written.
    */
   def writeBytesTo(out: OutputStream): Unit
-  /** TODO FILL IN */
+  /** The MIME type this payload should be served with over HTTP, when this
+   *  library knows one.
+   *
+   *  `None`, the default, means "unknown", not "no type": a caller that needs a
+   *  value has to substitute a fallback of its own or refuse the request.
+   *  Nothing validates the string, so an implementation overriding this is
+   *  responsible for emitting a well-formed media type.
+   */
   def httpContentType: Option[String] = None
-  /** TODO FILL IN */
+  /** How many bytes [[writeBytesTo]] will write, if that is known before the
+   *  bytes are produced.
+   *
+   *  `None`, the default, means the length is unknown and the payload must be
+   *  streamed rather than sent with a `Content-Length`. `Some(n)` is only a
+   *  promise: nothing compares it against what is actually written, so an
+   *  implementation whose payload can change must recompute rather than cache.
+   */
   def contentLength: Option[Long] = None
 }
 object Writable extends LowPriWritable {
-  /** TODO FILL IN
+  /** Implicitly converts a [[String]] into a [[Writable]] that emits its UTF-8
+   *  encoding, so `"hello".writeBytesTo(out)` compiles.
    *
-   *  @param s TODO FILL IN
+   *  The string is kept as-is and encoded only when the bytes are written.
+   *
+   *  @param s the string to encode. It is read afresh on every write, so `null`
+   *           fails with `NullPointerException` rather than producing an empty
+   *           payload; `""` is valid and writes zero bytes.
    */
   implicit class StringWritable(s: String) extends Writable{
-    /** TODO FILL IN
+    /** Encodes the string as UTF-8 and writes it to `out` in chunks of 8192
+     *  characters, one `OutputStream.write(byte[])` call per chunk.
      *
-     *  @param out TODO FILL IN
+     *  Chunking happens on the characters *before* encoding, so a surrogate
+     *  pair that straddles an 8192-char boundary is emitted as two `?`
+     *  replacement bytes instead of one 4-byte sequence. Apart from that the
+     *  bytes written are what `s.getBytes(UTF_8)` would produce; no byte-order
+     *  mark is emitted.
+     *
+     *  @param out the stream that receives the UTF-8 bytes. It is neither
+     *             flushed nor closed here. A `null` fails with
+     *             `NullPointerException` on the first chunk, which for `""`
+     *             never comes, since an empty string produces no chunks.
      */
     def writeBytesTo(out: OutputStream): Unit = {
 
       s.grouped(8192).foreach(ss => out.write(ss.getBytes(StandardCharsets.UTF_8)))
     }
-    /** TODO FILL IN */
+    /** `Some("text/plain; charset=utf-8")`, matching the encoding
+     *  [[writeBytesTo]] performs, so the declared type can never contradict the
+     *  bytes. Constant, and therefore identical on every call.
+     */
     override def httpContentType = Some("text/plain; charset=utf-8")
-    /** TODO FILL IN */
+    /** The UTF-8 length of the string as computed by [[Internal.encodedLength]],
+     *  which measures the string without encoding it.
+     *
+     *  Recomputed on each call. It agrees with what [[writeBytesTo]] emits,
+     *  except that a lone surrogate is rejected here with
+     *  `IllegalArgumentException` while the encoder would have substituted `?`.
+     */
     override def contentLength = Some(Internal.encodedLength(s))
   }
 
-  /** TODO FILL IN
+  /** Implicitly converts an `Array[Byte]` into a [[Writable]] that emits those
+   *  bytes verbatim, so `bytes.writeBytesTo(out)` compiles.
    *
-   *  @param a TODO FILL IN
+   *  No copy is made: the array is referenced, so mutating it afterwards changes
+   *  what a subsequent write produces.
+   *
+   *  @param a the exact bytes to write. Every element is passed on as a raw
+   *           byte, never decoded into a character; `null` fails with
+   *           `NullPointerException`, and an empty array writes nothing at all.
    */
   implicit class ByteArrayWritable(a: Array[Byte]) extends Writable{
-    /** TODO FILL IN
+    /** Writes the whole array to `out` in a single
+     *  `OutputStream.write(byte[])` call, handing the payload over in one go
+     *  rather than streaming it in chunks.
      *
-     *  @param out TODO FILL IN
+     *  The array is only read, never copied or modified, and `out` is left open
+     *  and unflushed.
+     *
+     *  @param out the stream that receives the array. A `null` fails with
+     *             `NullPointerException`; an empty array performs no write and
+     *             so never notices a `null`.
      */
     def writeBytesTo(out: OutputStream): Unit = out.write(a)
-    /** TODO FILL IN */
+    /** `Some("application/octet-stream")`: raw bytes carrying no encoding of
+     *  their own. Constant, and independent of the array's contents.
+     */
     override def httpContentType = Some("application/octet-stream")
-    /** TODO FILL IN */
+    /** `Some(a.length)`, re-read on each call rather than cached.
+     *
+     *  Since the array is not copied, the value tracks mutation of it — but it
+     *  is not validated against what [[writeBytesTo]] later produces, so
+     *  resizing the array between the two makes the reported length wrong.
+     */
     override def contentLength = Some(a.length)
   }
 
-  /** TODO FILL IN
+  /** Implicitly converts a `java.nio.ByteBuffer` into a [[Writable]] that emits
+   *  the bytes between the buffer's position and its limit, so
+   *  `buffer.writeBytesTo(out)` compiles.
    *
-   *  @param buffer TODO FILL IN
+   *  The buffer is not consumed: writing duplicates it, which leaves the
+   *  original's position, limit and mark untouched and lets the same buffer be
+   *  written repeatedly. The bytes are read live, so the buffer must not be
+   *  mutated by anyone else while a write is in progress.
+   *
+   *  @param buffer the buffer whose remaining bytes form the payload, that is
+   *                `buffer.remaining()` bytes starting at the current position.
+   *                A `null` fails with `NullPointerException`. The byte order is
+   *                carried over to the duplicate, though a bulk copy is
+   *                byte-order agnostic; `position`, `limit` and `mark` are left
+   *                as they were.
    */
   implicit class ByteBufferWritable(buffer: java.nio.ByteBuffer) extends Writable {
-    /** TODO FILL IN
+    /** Copies the buffer's remaining bytes into `out` through a reusable 8 KiB
+     *  staging array, issuing one `OutputStream.write(byte[], int, int)` call per
+     *  chunk.
      *
-     *  @param out TODO FILL IN
+     *  The buffer is duplicated first, so the caller's position and limit are
+     *  unchanged and a second call writes the same bytes again. `out` is left
+     *  open and unflushed, and the staging array is reused across chunks, which
+     *  is safe only because each chunk is written before the next one is read.
+     *
+     *  @param out the stream that receives the bytes. A `null` fails with
+     *             `NullPointerException` on the first chunk; a buffer with
+     *             nothing remaining writes nothing and so never touches `out`.
      */
     def writeBytesTo(out: OutputStream): Unit = {
       // TODO: there is room for optimization here. We could match on the output
@@ -101,22 +190,52 @@ object Writable extends LowPriWritable {
         count += l
       }
     }
-    /** TODO FILL IN */
+    /** `Some("application/octet-stream")`, as for the other raw-byte
+     *  [[Writable]]s. Constant, and correct for any buffer since raw bytes are
+     *  moved without decoding.
+     */
     override def httpContentType = Some("application/octet-stream")
-    /** TODO FILL IN */
+    /** `Some(buffer.remaining())`, evaluated against the live buffer on every
+     *  call instead of being cached at construction.
+     *
+     *  Because [[writeBytesTo]] duplicates the buffer, the value does not fall
+     *  to zero after a write; it only goes stale if the caller moves the
+     *  position or limit in between the two calls.
+     */
     override def contentLength = Some(buffer.remaining())
   }
 
 }
 
-/** TODO FILL IN */
+/** The low-priority implicit conversions into [[Writable]].
+ *
+ *  Mixed into the `Writable` companion object so that any value of a type `T`
+ *  for which a `T => Readable` conversion is in scope can be used where a
+ *  [[Writable]] is expected. It sits at low priority deliberately: the
+ *  specialised conversions defined directly in the companions of `Writable` and
+ *  `Readable` win for the types they cover, so this generic rule only fires for
+ *  types that have no conversion of their own.
+ */
 trait LowPriWritable{
-  /** TODO FILL IN
+  /** Lifts any value that can be converted into a [[Readable]] into a
+   *  [[Writable]], returning the very same instance.
    *
-   *  @tparam T TODO FILL IN
-   *  @param t TODO FILL IN
-   *  @param f TODO FILL IN
-   *  @return TODO FILL IN
+   *  Nothing is copied or buffered here: the result *is* the `Readable`, so
+   *  writing it runs that object's `writeBytesTo`, which for a stream-backed
+   *  source consumes the underlying stream for good.
+   *
+   *  @tparam T the type being converted; entirely unconstrained, so the
+   *            conversion is selected purely by the availability of `f`.
+   *  @param t the value to wrap. It is not inspected, so `null` is handed to `f`
+   *           and whatever that does with it — most likely a
+   *           `NullPointerException` — is what the caller sees.
+   *  @param f the implicit conversion from `T` to a `T`-specific `Readable`,
+   *           typically one of the implicit classes in `Readable`'s companion.
+   *           When no such conversion is in scope, the call fails to compile
+   *           rather than at run time.
+   *  @return `f(t)` itself, a `Readable` widened to `Writable`. The identity is
+   *          preserved: this is not a wrapper that could fall out of sync with
+   *          the original.
    */
   implicit def readableWritable[T](t: T)(implicit f: T => Readable): Writable = f(t)
 }
@@ -133,68 +252,153 @@ trait LowPriWritable{
  * callback returns.
  */
 trait Readable extends Writable{
-  /** TODO FILL IN
+  /** Hands a stream over this [[Readable]]'s bytes to `f` and returns whatever
+   *  `f` returns, so the payload can be consumed with blocking `read` calls
+   *  instead of being pushed out by [[writeBytesTo]].
    *
-   *  @tparam T TODO FILL IN
-   *  @param f TODO FILL IN
-   *  @return TODO FILL IN
+   *  The stream only has to exist for the duration of the call: an
+   *  implementation may close it and release whatever is behind it as soon as
+   *  `f` returns, so callers must not retain or use it afterwards.
+   *
+   *  @tparam T the result type of the callback. It is unrelated to the payload
+   *            and is returned unchanged.
+   *  @param f the function to run over the stream. It is invoked exactly once,
+   *           synchronously, on the calling thread, and receives a stream
+   *           positioned at the first byte of the payload. An exception thrown
+   *           by `f` propagates to the caller of this method.
+   *  @return the value `f` produced, passed straight through. Failure is
+   *          reported by throwing — from `f`, or later from a read on the
+   *          stream — never as a sentinel value, so nothing needs unwrapping.
    */
   def readBytesThrough[T](f: InputStream => T): T
-  /** TODO FILL IN
+  /** Copies every byte of the payload into `out` by running
+   *  [[Internal.transfer]] over a stream obtained from [[readBytesThrough]].
    *
-   *  @param out TODO FILL IN
+   *  The copy is streamed through a transfer buffer that starts near the
+   *  source's `available` size and grows up to a ceiling, so neither stream has
+   *  to hold the whole payload. That source stream is closed before this method
+   *  returns; `out` is left open and unflushed.
+   *
+   *  @param out the stream that receives the bytes, in order. It is neither
+   *             flushed nor closed here. A `null` fails with
+   *             `NullPointerException` on the first write, so an empty payload
+   *             never notices.
    */
   def writeBytesTo(out: OutputStream): Unit = readBytesThrough(Internal.transfer(_, out))
 }
 object Readable{
-  /** TODO FILL IN
+  /** Implicitly converts a [[String]] into a [[Readable]] over its UTF-8
+   *  encoding, so `"hello".readBytesThrough(f)` compiles.
    *
-   *  @param s TODO FILL IN
+   *  The string is encoded per call rather than up front, which makes the result
+   *  reusable: every call starts from the beginning.
+   *
+   *  @param s the string to encode. `null` fails with `NullPointerException`
+   *           instead of yielding an empty stream; `""` is valid and produces a
+   *           stream that is immediately at EOF.
    */
   implicit class StringReadable(s: String) extends Readable{
-    /** TODO FILL IN
+    /** Encodes the string as UTF-8 and hands `f` a `ByteArrayInputStream` over
+     *  the result.
      *
-     *  @tparam T TODO FILL IN
-     *  @param f TODO FILL IN
-     *  @return TODO FILL IN
+     *  A fresh stream is built on every call, so the same [[StringReadable]] can
+     *  be read repeatedly and always sees the whole string. The stream holds no
+     *  external resource, so `f` may ignore it or leave it unclosed without
+     *  leaking anything.
+     *
+     *  @tparam T the result type of `f`, returned unchanged.
+     *  @param f the function to run, called once and synchronously with a stream
+     *           positioned at the first UTF-8 byte. An exception it throws
+     *           propagates to the caller.
+     *  @return the value `f` returned. Running out of bytes is reported by
+     *          `read` returning -1, not by this method, which always returns
+     *          `f`'s own result.
      */
     def readBytesThrough[T](f: InputStream => T): T = {
       f(new ByteArrayInputStream(s.getBytes(StandardCharsets.UTF_8)))
     }
-    /** TODO FILL IN */
+    /** `Some("text/plain; charset=utf-8")`, matching the encoding
+     *  [[readBytesThrough]] performs. Constant, so it cannot disagree with the
+     *  bytes that are produced.
+     */
     override def httpContentType = Some("text/plain; charset=utf-8")
-    /** TODO FILL IN */
+    /** The UTF-8 length of the string from [[Internal.encodedLength]], which
+     *  measures it without encoding, re-read on each call.
+     *
+     *  It matches the length of what [[readBytesThrough]] hands out, except
+     *  that an unpaired surrogate raises `IllegalArgumentException` here while
+     *  the encoder would have substituted a single `?` byte.
+     */
     override def contentLength = Some(Internal.encodedLength(s))
   }
 
-  /** TODO FILL IN
+  /** Implicitly converts an `Array[Byte]` into a [[Readable]] over exactly those
+   *  bytes, so `bytes.readBytesThrough(f)` compiles.
    *
-   *  @param a TODO FILL IN
+   *  The array is not copied, so the payload reflects any later mutation of it.
+   *
+   *  @param a the bytes to read. They are exposed raw and never decoded;
+   *           `null` fails with `NullPointerException`, and an empty array
+   *           produces a stream that is immediately at EOF.
    */
   implicit class ByteArrayReadable(a: Array[Byte]) extends Readable{
-    /** TODO FILL IN
+    /** Hands `f` a `ByteArrayInputStream` positioned at the start of the array.
      *
-     *  @tparam T TODO FILL IN
-     *  @param f TODO FILL IN
-     *  @return TODO FILL IN
+     *  Reading from that stream does not modify the array, and a new one is
+     *  built per call, so this [[Readable]] is reusable and every call starts at
+     *  index 0.
+     *
+     *  @tparam T the result type of `f`, returned unchanged.
+     *  @param f the function to run over the stream, called once and
+     *           synchronously. It may read as much or as little as it likes; an
+     *           exception it throws propagates to the caller.
+     *  @return the value `f` returned, passed through untouched — there is no
+     *          error channel besides exceptions.
      */
     def readBytesThrough[T](f: InputStream => T): T = f(new ByteArrayInputStream(a))
-    /** TODO FILL IN */
+    /** `Some("application/octet-stream")`, since an array of bytes carries no
+     *  encoding of its own. Constant.
+     */
     override def httpContentType = Some("application/octet-stream")
-    /** TODO FILL IN */
+    /** `Some(a.length)`, re-read on each call so that it tracks mutation of the
+     *  array, which is also exactly what a later read will see.
+     */
     override def contentLength = Some(a.length)
   }
 
-  /** TODO FILL IN
+  /** Implicitly converts a `java.nio.ByteBuffer` into a [[Readable]] over the
+   *  bytes between its position and its limit, so `buffer.readBytesThrough(f)`
+   *  compiles.
    *
-   *  @param buffer TODO FILL IN
+   *  Each call duplicates the buffer, so the original's position, limit and mark
+   *  are untouched and the same bytes can be read again — though not safely
+   *  while another thread mutates the buffer underneath.
+   *
+   *  @param buffer the buffer whose remaining bytes form the payload, that is
+   *                `buffer.remaining()` bytes starting at the current position.
+   *                A `null` fails with `NullPointerException`. Byte order is
+   *                copied onto the duplicate but does not affect the result,
+   *                since the bytes are moved verbatim.
    */
   implicit class ByteBufferReadable(buffer: java.nio.ByteBuffer) extends Readable{
-    /** TODO FILL IN
+    /** Wraps the buffer's remaining bytes in a streaming `InputStream` view and
+     *  hands it to `f`.
      *
-     *  @tparam T TODO FILL IN
-     *  @param f TODO FILL IN
-     *  @return TODO FILL IN
+     *  The view reads straight out of a fresh duplicate, so it delivers the same
+     *  bytes on every call. Only `read()` and `read(byte[], int, int)` are
+     *  implemented: `close` is a no-op because there is nothing behind the
+     *  buffer to release, and `available` reports 0, since no count of the
+     *  remaining bytes is maintained. A short read is possible and must be
+     *  handled by the caller.
+     *
+     *  @tparam T the result type of `f`, returned unchanged.
+     *  @param f the function to run over the stream, called once and
+     *           synchronously. If it reads the stream and then throws, the
+     *           exception propagates and the bytes it consumed are lost for good,
+     *           because there is no way to rewind the duplicate.
+     *  @return the value `f` returned. End of data is signalled by `read`
+     *          returning -1, not by this method, which always returns `f`'s own
+     *          result.
      */
     def readBytesThrough[T](f: InputStream => T): T = {
       val bb = buffer.duplicate().order(buffer.order())
@@ -216,25 +420,61 @@ object Readable{
 
       f(is)
     }
-    /** TODO FILL IN */
+    /** `Some("application/octet-stream")`, as for the other raw-byte
+     *  [[Readable]]s. Constant, and correct for any buffer because the bytes are
+     *  moved without decoding.
+     */
     override def httpContentType = Some("application/octet-stream")
-    /** TODO FILL IN */
+    /** `Some(buffer.remaining())`, evaluated against the live buffer on each
+     *  call rather than cached at construction.
+     *
+     *  Reading through [[readBytesThrough]] consumes only a duplicate, so this
+     *  does not drop to zero afterwards; it goes stale only if the caller moves
+     *  the position or limit in between.
+     */
     override def contentLength = Some(buffer.remaining())
   }
 
-  /** TODO FILL IN
+  /** Implicitly converts an `InputStream` into a [[Readable]] that hands that
+   *  very stream to a callback, so `is.readBytesThrough(f)` compiles.
    *
-   *  @param i TODO FILL IN
+   *  Unlike the other [[Readable]]s this one is single-use: the stream is passed
+   *  on as-is, never rewound or copied, so its contents can be read only once.
+   *
+   *  @param i the stream to expose. It is not buffered, wrapped or decoded, and
+   *           a `null` is passed straight through, so whether that misbehaves at
+   *           all depends on `f` — in practice a `NullPointerException` on its
+   *           first use.
    */
   implicit class InputStreamReadable(i: InputStream) extends Readable{
-    /** TODO FILL IN
+    /** Passes the wrapped stream directly to `f` and returns its result,
+     *  without reading, buffering or closing anything itself.
      *
-     *  @tparam T TODO FILL IN
-     *  @param f TODO FILL IN
-     *  @return TODO FILL IN
+     *  Closing the stream, and whatever resource sits behind it, is left to `f`
+     *  or to the caller of this method: nothing here closes it. Note that
+     *  [[writeBytesTo]] does close it, by routing through
+     *  [[Internal.transfer]]. Since the same instance is handed out every time,
+     *  a second call continues where the first stopped and typically sees EOF
+     *  straight away.
+     *
+     *  @tparam T the result type of `f`, returned unchanged.
+     *  @param f the function to run, called once and synchronously on the
+     *           calling thread. It owns the stream for as long as it needs it,
+     *           and should close it if that matters; an exception it throws
+     *           propagates to the caller and leaves the stream at whatever
+     *           position it had reached.
+     *  @return the value `f` returned, passed through untouched. Failure is
+     *          reported only by exceptions — a stream that is already exhausted
+     *          simply yields -1 from `read`.
      */
     def readBytesThrough[T](f: InputStream => T): T = f(i)
-    /** TODO FILL IN */
+    /** `Some("application/octet-stream")`, the conservative default for a stream
+     *  whose bytes carry no decoding of their own.
+     *
+     *  [[contentLength]] is deliberately left at its inherited `None`: a stream
+     *  generally does not know its size, and the first read consumes it, so
+     *  reporting a length would be a guess.
+     */
     override def httpContentType: Option[String] = Some("application/octet-stream")
   }
 }
